@@ -4,11 +4,10 @@ import asyncio
 from telethon import TelegramClient
 
 
-from config.config import load_config, DEFAULT_FILE_NAME
-from content_parser.video_parser import VideoContentGetter
+from config.config import load_config
+from content_parser.video_parser import ContentGetter
 from content_handler.video_splicing import VideoSplicer
 from yandex_disk_api.disk_file_processing import YandexDiskFileProcessor
-from service.filter import stop_download_by_date
 
 
 def create_client(telegram_config):
@@ -24,12 +23,11 @@ async def main(channel_link):
     telegram_config, yandex_config = load_config()
     client = create_client(telegram_config)
     ya_processor = YandexDiskFileProcessor(yandex_config)
-    last_file_name = ya_processor.file_name or DEFAULT_FILE_NAME
     async with client:
         chanel = await client.get_entity(channel_link)
         messages = client.iter_messages(chanel)
-        vd_getter = VideoContentGetter(messages)
-        new_file_name = await vd_getter.download(last_file_name, path_to_save='./videos', filer=stop_download_by_date)
+        vd_getter = ContentGetter(messages)
+        new_file_name = await vd_getter.download(path_to_save='./videos')
 
     video_splicer = VideoSplicer('./videos', new_file_name)
 

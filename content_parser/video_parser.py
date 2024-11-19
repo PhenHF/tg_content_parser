@@ -2,16 +2,26 @@ from pathlib import Path
 
 
 from telethon.client.messages import _MessagesIter
-from telethon.tl.types import MessageMediaDocument, Message
 
 
-from service.convertor import date_convert_to_file_name, file_name_to_date_parse
-from config.config import DEFAULT_MEDIA_TYPE
+from service.convertor import date_convert_to_file_name
+from content_handler.filter import BaseTelegramFilter
 
 
-class VideoContentGetter:
-    def __init__(self, messages: _MessagesIter) -> None:
+# Class for downloading content
+class ContentGetter:
+    def __init__(self, messages: _MessagesIter, filters: list[BaseTelegramFilter], create_file_name: callable) -> None:
         self.__validate_message(messages)
+        self.__validate_filters(filters)
+        self.__get_file_name = create_file_name
+
+    def __validate_filters(self, filters: list[BaseTelegramFilter]):
+        for f in filters:
+            if not isinstance(f, BaseTelegramFilter):
+                raise TypeError(
+                    "filters must be list[BaseTelegramFilter]"
+                )
+        self.__filters = filters
 
     def __validate_message(self, messages: _MessagesIter) -> None:
         if not isinstance(messages, _MessagesIter):
@@ -20,38 +30,28 @@ class VideoContentGetter:
 
         self.__messages = messages
 
-    async def __get_media(self, message: Message) -> MessageMediaDocument | None:
-        return message.media if isinstance(message.media, MessageMediaDocument) else None
-
-    async def __check_media_type(self, media: MessageMediaDocument) -> bool:
-        media_dict_type = media.to_dict()
-        for mt in DEFAULT_MEDIA_TYPE:
-            if media_dict_type[mt]:
-                return True
-
-    async def download(self, last_file_name: str, path_to_save: Path | str, filer: callable) -> str:
+    async def download(self, path_to_save: Path | str) -> str:
         if not isinstance(path_to_save, Path):
             __path_to_save = Path(path_to_save)
 
-        first_file_name = ''
+        first_file_name: str
 
+        # Iterate through a list of Messages
         async for message in self.__messages:
-            if not filer(message, file_name_to_date_parse(last_file_name)):
-                break
 
-            media = await self.__get_media(message)
+            # Iterate through a list of TelegramBaseFilter
+            for f in self.__filters:
+                ok, file_extension = f.filter(message)
+                if not ok:
+                    continue
 
-            download_videos = []
-
-            if media and await self.__check_media_type(media):
+                # TODO Добавить получение функции для создания __file_name из вне
                 __file_name = Path(
-                    date_convert_to_file_name(message.date, 'mp4')
+                    date_convert_to_file_name(message.date, file_extension)
                 )
 
                 if not first_file_name:
                     first_file_name = __file_name
-
-                download_videos.append(__path_to_save / __file_name)
 
                 await message.download_media(__path_to_save / __file_name)
 
